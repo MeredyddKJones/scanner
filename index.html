@@ -15,12 +15,20 @@
     <video id="video" autoplay playsinline muted></video>
     <canvas id="overlay"></canvas>
     <div id="cam-message" class="cam-message hidden"></div>
+    <div id="flash"></div>
   </div>
   <header class="cam-top">
-    <span id="cv-status" class="pill">loading detector…</span>
-    <button id="btn-torch" class="icon-btn hidden" title="Torch">
-      <svg viewBox="0 0 24 24"><path d="M7 2h10v3l-2 3v3h-6V8L7 5V2zm2 13h6l-1 7h-4l-1-7z" fill="currentColor"/></svg>
+    <button id="btn-library" class="icon-btn glass" title="Library">
+      <svg viewBox="0 0 24 24"><path d="M4 6h7l2 2h7v11a1 1 0 01-1 1H5a1 1 0 01-1-1V6z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>
     </button>
+    <span id="cv-status" class="pill">loading detector…</span>
+    <div class="cam-toggles">
+      <button id="btn-auto" class="pill-toggle" title="Auto-capture when steady">Auto</button>
+      <button id="btn-batch" class="pill-toggle" title="Keep scanning without review">Batch</button>
+      <button id="btn-torch" class="icon-btn glass hidden" title="Torch">
+        <svg viewBox="0 0 24 24"><path d="M7 2h10v3l-2 3v3h-6V8L7 5V2zm2 13h6l-1 7h-4l-1-7z" fill="currentColor"/></svg>
+      </button>
+    </div>
   </header>
   <footer class="cam-controls">
     <button id="btn-import" class="icon-btn big" title="Import from gallery">
@@ -83,7 +91,10 @@
     <button id="pages-back" class="icon-btn" title="Camera">
       <svg viewBox="0 0 24 24"><path d="M15 4l-8 8 8 8" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
     </button>
-    <h2 id="pages-title">Pages</h2>
+    <h2 id="pages-title" title="Tap to rename">Pages</h2>
+    <button id="pages-library" class="icon-btn" title="Library">
+      <svg viewBox="0 0 24 24"><path d="M4 6h7l2 2h7v11a1 1 0 01-1 1H5a1 1 0 01-1-1V6z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>
+    </button>
     <button id="pages-clear" class="icon-btn danger" title="Delete all">
       <svg viewBox="0 0 24 24"><path d="M6 7h12M9 7V5h6v2m-8 0l1 13h8l1-13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
     </button>
@@ -93,6 +104,22 @@
   <footer class="bar pages-actions">
     <button id="btn-add" class="ghost-btn">＋ Add page</button>
     <button id="btn-export" class="accent-btn">Export</button>
+  </footer>
+</main>
+
+<!-- ============ LIBRARY SCREEN ============ -->
+<main id="screen-library" class="screen">
+  <header class="bar">
+    <button id="library-back" class="icon-btn" title="Camera">
+      <svg viewBox="0 0 24 24"><path d="M15 4l-8 8 8 8" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
+    </button>
+    <h2>Library</h2>
+    <span class="icon-btn" aria-hidden="true"></span>
+  </header>
+  <div id="doc-list"></div>
+  <div id="library-empty" class="empty-note hidden">No saved documents yet.<br>Scans are saved here automatically.</div>
+  <footer class="bar pages-actions">
+    <button id="btn-new-scan" class="accent-btn">＋ New scan</button>
   </footer>
 </main>
 
@@ -113,6 +140,26 @@
       <button class="chip" data-format="txt">Text (OCR)</button>
     </div>
   </div>
+  <div class="field" id="opt-pagesize">
+    <span>Page size</span>
+    <div class="chip-row" id="pagesize-row">
+      <button class="chip active" data-size="fit">Fit image</button>
+      <button class="chip" data-size="a4">A4</button>
+      <button class="chip" data-size="letter">Letter</button>
+    </div>
+  </div>
+  <label class="field" id="opt-quality">
+    <span>Quality — <b id="quality-label">80</b>%</span>
+    <input id="quality-slider" type="range" min="50" max="95" step="5" value="80">
+  </label>
+  <label class="row-check" id="opt-searchable">
+    <input type="checkbox" id="chk-searchable">
+    <span>Searchable text layer (OCR)</span>
+  </label>
+  <label class="field" id="opt-lang">
+    <span>OCR language</span>
+    <select id="ocr-lang"></select>
+  </label>
   <div id="export-progress" class="hidden">
     <div class="progress-track"><div id="progress-fill"></div></div>
     <span id="progress-label"></span>
@@ -123,9 +170,16 @@
   </div>
 </div>
 
+<div id="loupe" class="hidden"><canvas id="loupe-canvas" width="120" height="120"></canvas></div>
+<div id="update-bar" class="hidden">
+  <span>Update available</span>
+  <button id="btn-update">Reload</button>
+</div>
 <div id="toast" class="hidden"></div>
 
 <script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/fflate.js"></script>
+<script src="js/db.js"></script>
 <script src="js/detector.js"></script>
 <script src="js/exporter.js"></script>
 <script src="js/app.js"></script>

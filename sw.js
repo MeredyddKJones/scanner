@@ -1,6 +1,9 @@
 /* Offline-first service worker. Bump VERSION whenever any file changes. */
-const VERSION = "v1";
+importScripts("js/db.js");
+
+const VERSION = "v2";
 const CACHE = "scanner-" + VERSION;
+const TESSDATA_HOST = "tessdata.projectnaptha.com";
 
 const ASSETS = [
   "./",
@@ -8,9 +11,11 @@ const ASSETS = [
   "manifest.json",
   "css/style.css",
   "js/app.js",
+  "js/db.js",
   "js/detector.js",
   "js/exporter.js",
   "vendor/jspdf.umd.min.js",
+  "vendor/fflate.js",
   "vendor/opencv.js",
   "vendor/tesseract.min.js",
   "vendor/worker.min.js",
@@ -27,8 +32,12 @@ self.addEventListener("install", (e) => {
     const cache = await caches.open(CACHE);
     // add individually so one flaky big download doesn't abort install
     await Promise.allSettled(ASSETS.map((a) => cache.add(a)));
-    self.skipWaiting();
+    // no skipWaiting here: the page shows an update banner and asks for it
   })());
+});
+
+self.addEventListener("message", (e) => {
+  if (e.data === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", (e) => {
@@ -41,7 +50,26 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.origin !== location.origin) return;
+
+  // Android share sheet target: stash the files, bounce to the app
+  if (e.request.method === "POST" && url.pathname.endsWith("/share-target")) {
+    e.respondWith((async () => {
+      try {
+        const fd = await e.request.formData();
+        const files = fd.getAll("media").filter((f) => f && f.size);
+        if (files.length) await DB.pushIncoming(files);
+      } catch { /* fall through to the app regardless */ }
+      return Response.redirect("./?shared=1", 303);
+    })());
+    return;
+  }
+
+  if (e.request.method !== "GET") return;
+
+  // extra OCR language packs from the tessdata CDN: cache on first download
+  const cacheable = url.origin === location.origin || url.hostname === TESSDATA_HOST;
+  if (!cacheable) return;
+
   e.respondWith((async () => {
     const cached = await caches.match(e.request, { ignoreSearch: true });
     if (cached) return cached;

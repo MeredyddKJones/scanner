@@ -399,6 +399,152 @@ footer.bar { padding: 8px 12px calc(10px + var(--safe-bottom)); }
 
 .sheet-actions { display: flex; gap: 12px; }
 
+/* ---------- camera toggles ---------- */
+.icon-btn.glass { background: rgba(0,0,0,.45); }
+.cam-toggles {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pill-toggle {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.45);
+  color: var(--fg-dim);
+  font-size: 13px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+.pill-toggle.on {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+#flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+#flash.go { animation: flashfade .35s ease-out; }
+@keyframes flashfade { 0% { opacity: .8; } 100% { opacity: 0; } }
+
+/* ---------- library ---------- */
+#doc-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.doc-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg2);
+  border-radius: 12px;
+  padding: 10px;
+}
+.doc-item img {
+  width: 54px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--bg3);
+  flex: none;
+}
+.doc-info { flex: 1; min-width: 0; }
+.doc-name {
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.doc-meta { font-size: 13px; color: var(--fg-dim); margin-top: 3px; }
+.doc-item .icon-btn { flex: none; width: 40px; height: 40px; }
+
+/* ---------- page tile drag ---------- */
+.tile-btn.grip { cursor: grab; touch-action: none; font-size: 18px; letter-spacing: 1px; }
+.page-tile.drop-target { outline: 2.5px solid var(--accent); outline-offset: 2px; }
+.page-tile.dragging { opacity: .35; }
+#drag-ghost {
+  position: fixed;
+  width: 90px;
+  z-index: 30;
+  pointer-events: none;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.6);
+  transform: translate(-50%, -60%) rotate(3deg);
+}
+
+/* ---------- loupe ---------- */
+#loupe {
+  position: fixed;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--accent);
+  box-shadow: 0 6px 20px rgba(0,0,0,.6);
+  z-index: 25;
+  pointer-events: none;
+  background: #000;
+}
+
+/* ---------- export sheet extras ---------- */
+.sheet { max-height: 82vh; overflow-y: auto; }
+.row-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+}
+.row-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+.field select {
+  background: var(--bg3);
+  border: none;
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--fg);
+  font-size: 15px;
+  outline: none;
+}
+.field input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+/* ---------- update bar ---------- */
+#update-bar {
+  position: fixed;
+  top: calc(10px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg3);
+  border-radius: 999px;
+  padding: 9px 10px 9px 18px;
+  font-size: 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5);
+}
+#update-bar button {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 7px 14px;
+}
+
 /* ---------- toast ---------- */
 #toast {
   position: fixed;

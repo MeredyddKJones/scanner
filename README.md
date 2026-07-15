@@ -6,13 +6,26 @@ runs on your phone. Plain JS, no build step.
 **Features**
 
 - Live camera with automatic document edge detection (OpenCV.js)
-- Perspective correction with manually adjustable corners
-- Filters: Original, Magic (shadow/cast removal), Grayscale, B&W
-- Multi-page documents: reorder, re-edit, delete
-- Import photos from the gallery instead of the camera
-- Export: multi-page **PDF**, **JPG**, **PNG**, or **OCR text** (Tesseract.js, English)
+- **Auto-capture**: hold steady over a document and it snaps by itself
+- **Batch mode**: shoot page after page, review later
+- Full-sensor stills via `ImageCapture.takePhoto()` (falls back to video frame)
+- Perspective correction + fine deskew, manually adjustable corners with a
+  magnifier loupe
+- Filters: Original, Magic (shadow/cast removal + glare softening + sharpen),
+  Grayscale, B&W
+- Multi-page documents: drag to reorder, re-edit, delete
+- **Library**: every scan autosaves to IndexedDB; documents survive restarts
+  and can be reopened, renamed, re-exported
+- Import photos from the gallery, or **share images into the app** from any
+  other app (Android share sheet, once installed)
+- Export: multi-page **PDF** (optionally **searchable** via an invisible OCR
+  text layer; Fit/A4/Letter page sizes; quality slider), **JPG**, **PNG**
+  (zipped when multi-page), or plain **OCR text**
+- OCR languages: English bundled; Welsh, French, German, Spanish, Italian,
+  Dutch, Portuguese, Polish download on first use and are cached offline
 - Save to Downloads or use the Android **Share** sheet (Drive, WhatsApp, email…)
 - Works fully offline once installed (service worker caches everything, ~30 MB)
+- In-app "Update available" banner when a new version is deployed
 
 ## Getting it on your phone
 
@@ -46,13 +59,14 @@ The service worker caches aggressively. After changing any file, bump
 ## Layout
 
 ```
-index.html        app shell (camera / edit / pages screens, export sheet)
+index.html        app shell (camera / edit / pages / library screens, export sheet)
 css/style.css
-js/app.js         UI state, camera, crop handles, export flow
-js/detector.js    OpenCV: edge detection, perspective warp, filters
-js/exporter.js    jsPDF, image export, Tesseract OCR, share/download
-sw.js             offline cache (bump VERSION on changes)
-manifest.json     PWA manifest
-vendor/           opencv.js, jspdf, tesseract.js + core wasm + eng traineddata
+js/app.js         UI state, camera, auto-capture, crop handles, library, export flow
+js/db.js          IndexedDB layer (documents, kv, share-target inbox) — also used by sw.js
+js/detector.js    OpenCV: edge detection, perspective warp, deskew, filters
+js/exporter.js    jsPDF (+searchable text layer), image/zip export, Tesseract OCR
+sw.js             offline cache + Android share-target handler (bump VERSION on changes)
+manifest.json     PWA manifest (incl. share_target)
+vendor/           opencv.js, jspdf, fflate, tesseract.js + core wasm + eng traineddata
 icons/            app icons (regenerate with gen_icons.py)
 ```

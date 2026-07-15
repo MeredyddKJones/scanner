@@ -139,6 +139,86 @@ const Detector = (() => {
     return out;
   }
 
+  /* Measure residual tilt (deg) of the text lines after the perspective warp.
+     Median angle of long near-horizontal Hough lines; 0 if inconclusive. */
+  function deskewAngle(mat) {
+    const cv = window.cv;
+    const scale = Math.min(1, 900 / mat.cols);
+    const small = new cv.Mat();
+    if (scale < 1) {
+      cv.resize(mat, small, new cv.Size(Math.round(mat.cols * scale), Math.round(mat.rows * scale)));
+    } else {
+      mat.copyTo(small);
+    }
+    const gray = new cv.Mat();
+    const lines = new cv.Mat();
+    let angle = 0;
+    try {
+      cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY);
+      cv.Canny(gray, gray, 60, 180);
+      cv.HoughLinesP(gray, lines, 1, Math.PI / 180, 80, small.cols * 0.25, 10);
+      const angles = [];
+      for (let i = 0; i < lines.rows; i++) {
+        const x1 = lines.data32S[i * 4], y1 = lines.data32S[i * 4 + 1];
+        const x2 = lines.data32S[i * 4 + 2], y2 = lines.data32S[i * 4 + 3];
+        let a = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+        if (a > 90) a -= 180;
+        if (a < -90) a += 180;
+        if (Math.abs(a) <= 6) angles.push(a);
+      }
+      if (angles.length >= 3) {
+        angles.sort((a, b) => a - b);
+        const med = angles[Math.floor(angles.length / 2)];
+        if (Math.abs(med) >= 0.3) angle = med;
+      }
+    } finally {
+      small.delete(); gray.delete(); lines.delete();
+    }
+    return angle;
+  }
+
+  function rotateFine(mat, angle) {
+    const cv = window.cv;
+    const M = cv.getRotationMatrix2D(new cv.Point(mat.cols / 2, mat.rows / 2), angle, 1);
+    const out = new cv.Mat();
+    cv.warpAffine(mat, out, M, new cv.Size(mat.cols, mat.rows),
+      cv.INTER_LINEAR, cv.BORDER_REPLICATE);
+    M.delete();
+    return out;
+  }
+
+  /* Mild unsharp mask, in place. */
+  function sharpen(mat, amount) {
+    const cv = window.cv;
+    const blur = new cv.Mat();
+    cv.GaussianBlur(mat, blur, new cv.Size(0, 0), 1.2);
+    cv.addWeighted(mat, 1 + amount, blur, -amount, 0, mat);
+    blur.delete();
+  }
+
+  /* Local-contrast recovery around glare/highlights: CLAHE on the L channel.
+     Can't restore fully blown-out pixels, but softens glare boundaries. */
+  function claheL(rgb) {
+    const cv = window.cv;
+    let lab, ch, L, a, b, merged, clahe;
+    try {
+      lab = new cv.Mat();
+      cv.cvtColor(rgb, lab, cv.COLOR_RGB2Lab);
+      ch = new cv.MatVector();
+      cv.split(lab, ch);
+      L = ch.get(0); a = ch.get(1); b = ch.get(2);
+      clahe = new cv.CLAHE(1.8, new cv.Size(8, 8));
+      clahe.apply(L, L);
+      merged = new cv.MatVector();
+      merged.push_back(L); merged.push_back(a); merged.push_back(b);
+      cv.merge(merged, lab);
+      cv.cvtColor(lab, rgb, cv.COLOR_Lab2RGB);
+    } catch { /* CLAHE missing from this cv build — skip */
+    } finally {
+      for (const m of [lab, ch, L, a, b, merged, clahe]) m?.delete?.();
+    }
+  }
+
   /* "Magic" filter: estimate the paper background per channel
      (dilate + median blur) and divide it out — removes shadows and
      grey paper cast, keeps ink and colour. */
@@ -162,9 +242,11 @@ const Detector = (() => {
       toFree.push(ch, bg, flat);
     }
     cv.merge(outVec, rgb);
-    rgb.convertTo(rgb, -1, 1.06, -6); // gentle contrast
     toFree.forEach((m) => m.delete());
     channels.delete(); outVec.delete(); kernel.delete();
+    claheL(rgb);                       // glare-edge / local contrast recovery
+    sharpen(rgb, 0.45);
+    rgb.convertTo(rgb, -1, 1.03, -3);  // gentle global contrast
     return rgb;
   }
 
@@ -172,6 +254,7 @@ const Detector = (() => {
     const cv = window.cv;
     const gray = new cv.Mat();
     cv.cvtColor(rgba, gray, cv.COLOR_RGBA2GRAY);
+    sharpen(gray, 0.3);
     return gray;
   }
 
@@ -198,6 +281,16 @@ const Detector = (() => {
     } finally {
       src.delete();
     }
+
+    // fine deskew: straighten residual 0.3-6 degree tilt of the text lines
+    try {
+      const ang = deskewAngle(mat);
+      if (ang) {
+        const straight = rotateFine(mat, ang);
+        mat.delete();
+        mat = straight;
+      }
+    } catch { /* keep unrotated */ }
 
     let filtered = mat;
     if (filter === "enhanced") filtered = filterEnhanced(mat);
