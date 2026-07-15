@@ -1,7 +1,7 @@
 /* Offline-first service worker. Bump VERSION whenever any file changes. */
 importScripts("js/db.js");
 
-const VERSION = "v3";
+const VERSION = "v4";
 const CACHE = "scanner-" + VERSION;
 const TESSDATA_HOST = "tessdata.projectnaptha.com";
 

@@ -66,18 +66,60 @@ const Detector = (() => {
     return inside;
   }
 
+  function quadArea(q) {
+    // shoelace on an ordered quad
+    let s = 0;
+    for (let i = 0; i < 4; i++) {
+      const a = q[i], b = q[(i + 1) % 4];
+      s += a.x * b.y - b.x * a.y;
+    }
+    return Math.abs(s) / 2;
+  }
+
+  /* Plausibility score for "this quad is a rectangle seen in perspective".
+     0 = reject. Constraints: opposite sides reasonably balanced, corner
+     angles near 90 deg, quad actually matching the hull it was fitted to. */
+  function quadScore(q, hullArea) {
+    const sides = [];
+    for (let i = 0; i < 4; i++) sides.push(dist(q[i], q[(i + 1) % 4]));
+    if (Math.min(...sides) < 1) return 0;
+    // opposite sides: a tilted rectangle foreshortens one edge, but not
+    // beyond ~2:1 at any usable angle
+    const r1 = Math.min(sides[0], sides[2]) / Math.max(sides[0], sides[2]);
+    const r2 = Math.min(sides[1], sides[3]) / Math.max(sides[1], sides[3]);
+    if (r1 < 0.45 || r2 < 0.45) return 0;
+    // corner angles within 90 +/- 50 deg
+    for (let i = 0; i < 4; i++) {
+      const p = q[(i + 3) % 4], c = q[i], n = q[(i + 1) % 4];
+      const v1 = { x: p.x - c.x, y: p.y - c.y };
+      const v2 = { x: n.x - c.x, y: n.y - c.y };
+      const cos = (v1.x * v2.x + v1.y * v2.y) /
+        (Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y));
+      const ang = Math.acos(Math.max(-1, Math.min(1, cos))) * 180 / Math.PI;
+      if (ang < 40 || ang > 140) return 0;
+    }
+    // the fitted quad must actually match the shape it came from
+    const area = quadArea(q);
+    const fit = area / hullArea;
+    if (fit < 0.75 || fit > 1.3) return 0;
+    // bigger and more rectangular wins
+    return area * (0.5 + 0.5 * Math.min(r1, r2));
+  }
+
   /* Fit a quad to one contour: convex hull first (skips envelope flaps and
      other concavities), then approxPolyDP at increasing tolerance so rounded
-     corners still collapse to 4 points. Returns [{x,y}x4] or null. */
+     corners still collapse to 4 points. Returns {quad, hullArea} or null. */
   function quadFromContour(c) {
     const cv = window.cv;
     const hull = new cv.Mat();
     const approx = new cv.Mat();
     let quad = null;
+    let hullArea = 0;
     try {
       cv.convexHull(c, hull, false, true);
+      hullArea = cv.contourArea(hull);
       const peri = cv.arcLength(hull, true);
-      for (const eps of [0.02, 0.04, 0.07]) {
+      for (const eps of [0.02, 0.035, 0.05]) {
         cv.approxPolyDP(hull, approx, eps * peri, true);
         if (approx.rows === 4 && cv.isContourConvex(approx)) {
           quad = [];
@@ -90,7 +132,7 @@ const Detector = (() => {
     } finally {
       hull.delete(); approx.delete();
     }
-    return quad;
+    return quad ? { quad, hullArea } : null;
   }
 
   /* Find the document quad in a canvas. Returns [tl,tr,br,bl] in source
@@ -135,8 +177,14 @@ const Detector = (() => {
           const c = contours.get(i);
           const area = cv.contourArea(c);
           if (area > minArea && area < maxArea) {
-            const quad = quadFromContour(c);
-            if (quad) candidates.push({ quad, area });
+            const fitted = quadFromContour(c);
+            // snaky merged-noise contours have low solidity: skip before
+            // they produce a sloppy hull-quad
+            if (fitted && area / fitted.hullArea > 0.7) {
+              const q = orderCorners(fitted.quad);
+              const score = quadScore(q, fitted.hullArea);
+              if (score > 0) candidates.push({ quad: q, area: quadArea(q), score });
+            }
           }
           c.delete();
         }
@@ -150,7 +198,7 @@ const Detector = (() => {
 
     if (!candidates.length) return null;
     let pool = candidates;
-    let pick = (a, b) => (b.area > a.area ? b : a); // default: largest
+    let pick = (a, b) => (b.score > a.score ? b : a); // default: best score
     if (nearPt) {
       const containing = candidates.filter((c) => pointInQuad(nearPt, c.quad));
       if (containing.length) {
@@ -161,7 +209,7 @@ const Detector = (() => {
       }
     }
     const best = pool.reduce(pick);
-    return orderCorners(best.quad.map((p) => ({ x: p.x / scale, y: p.y / scale })));
+    return best.quad.map((p) => ({ x: p.x / scale, y: p.y / scale }));
   }
 
   // ---- processing ----
