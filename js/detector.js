@@ -53,9 +53,51 @@ const Detector = (() => {
 
   // ---- detection ----
 
+  function pointInQuad(pt, quad) {
+    // ray casting
+    let inside = false;
+    for (let i = 0, j = 3; i < 4; j = i++) {
+      const a = quad[i], b = quad[j];
+      if ((a.y > pt.y) !== (b.y > pt.y) &&
+          pt.x < (b.x - a.x) * (pt.y - a.y) / (b.y - a.y) + a.x) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  /* Fit a quad to one contour: convex hull first (skips envelope flaps and
+     other concavities), then approxPolyDP at increasing tolerance so rounded
+     corners still collapse to 4 points. Returns [{x,y}x4] or null. */
+  function quadFromContour(c) {
+    const cv = window.cv;
+    const hull = new cv.Mat();
+    const approx = new cv.Mat();
+    let quad = null;
+    try {
+      cv.convexHull(c, hull, false, true);
+      const peri = cv.arcLength(hull, true);
+      for (const eps of [0.02, 0.04, 0.07]) {
+        cv.approxPolyDP(hull, approx, eps * peri, true);
+        if (approx.rows === 4 && cv.isContourConvex(approx)) {
+          quad = [];
+          for (let j = 0; j < 4; j++) {
+            quad.push({ x: approx.data32S[j * 2], y: approx.data32S[j * 2 + 1] });
+          }
+          break;
+        }
+      }
+    } finally {
+      hull.delete(); approx.delete();
+    }
+    return quad;
+  }
+
   /* Find the document quad in a canvas. Returns [tl,tr,br,bl] in source
-     coordinates, or null. Works on a <=480px downscale for speed. */
-  function detectQuad(srcCanvas) {
+     coordinates, or null. Works on a <=480px downscale for speed.
+     `near` ({x,y} in source coords) is a user tap: quads containing that
+     point win over anything bigger elsewhere in the frame. */
+  function detectQuad(srcCanvas, near) {
     const cv = window.cv;
     const maxDim = 480;
     const scale = Math.min(1, maxDim / Math.max(srcCanvas.width, srcCanvas.height));
@@ -63,19 +105,25 @@ const Detector = (() => {
     small.width = Math.round(srcCanvas.width * scale);
     small.height = Math.round(srcCanvas.height * scale);
     small.getContext("2d").drawImage(srcCanvas, 0, 0, small.width, small.height);
+    const nearPt = near ? { x: near.x * scale, y: near.y * scale } : null;
+
+    const frameArea = small.width * small.height;
+    const minArea = frameArea * 0.06;
+    const maxArea = frameArea * 0.98; // reject the frame border itself
 
     const src = cv.imread(small);
     const gray = new cv.Mat();
     const edges = new cv.Mat();
     const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
-    let best = null;
-    let bestArea = small.width * small.height * 0.12; // must cover >=12% of frame
+    const candidates = [];
 
     try {
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
       cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
 
-      for (const [lo, hi] of [[75, 200], [30, 120]]) {
+      // progressively lower thresholds catch low-contrast subjects
+      // (white envelope on a pale table)
+      for (const [lo, hi] of [[75, 200], [30, 120], [15, 60]]) {
         cv.Canny(gray, edges, lo, hi);
         cv.dilate(edges, edges, kernel, new cv.Point(-1, -1), 2);
 
@@ -86,32 +134,34 @@ const Detector = (() => {
         for (let i = 0; i < contours.size(); i++) {
           const c = contours.get(i);
           const area = cv.contourArea(c);
-          if (area > bestArea) {
-            const peri = cv.arcLength(c, true);
-            const approx = new cv.Mat();
-            cv.approxPolyDP(c, approx, 0.02 * peri, true);
-            if (approx.rows === 4 && cv.isContourConvex(approx)) {
-              bestArea = area;
-              best = [];
-              for (let j = 0; j < 4; j++) {
-                best.push({
-                  x: approx.data32S[j * 2] / scale,
-                  y: approx.data32S[j * 2 + 1] / scale,
-                });
-              }
-            }
-            approx.delete();
+          if (area > minArea && area < maxArea) {
+            const quad = quadFromContour(c);
+            if (quad) candidates.push({ quad, area });
           }
           c.delete();
         }
         contours.delete();
         hierarchy.delete();
-        if (best) break;
+        if (candidates.length) break;
       }
     } finally {
       src.delete(); gray.delete(); edges.delete(); kernel.delete();
     }
-    return best ? orderCorners(best) : null;
+
+    if (!candidates.length) return null;
+    let pool = candidates;
+    let pick = (a, b) => (b.area > a.area ? b : a); // default: largest
+    if (nearPt) {
+      const containing = candidates.filter((c) => pointInQuad(nearPt, c.quad));
+      if (containing.length) {
+        // tightest quad around the tap — "this specific thing", not the
+        // table edge that happens to contain it too
+        pool = containing;
+        pick = (a, b) => (b.area < a.area ? b : a);
+      }
+    }
+    const best = pool.reduce(pick);
+    return orderCorners(best.quad.map((p) => ({ x: p.x / scale, y: p.y / scale })));
   }
 
   // ---- processing ----

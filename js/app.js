@@ -189,9 +189,31 @@
   // ---- live detection + auto-capture ----
   const AUTO_NEED = 5;        // stable ticks (~1.1 s) before auto-capture
   const AUTO_TOL = 9;         // max corner drift in detect-canvas px
+  const TAP_TTL = 8000;       // how long a tap keeps steering detection
   let stableCount = 0;
   let lastQuad = null;
   let autoCooldownUntil = 0;
+  let tapPoint = null;        // {nx, ny, at} normalised video coords
+
+  /* Tap the viewfinder to tell the detector where the subject is. */
+  $("#cam-stage").addEventListener("pointerdown", (e) => {
+    if (!stream || !video.videoWidth) return;
+    if (e.target !== video && e.target !== overlay) return;
+    const stage = $("#cam-stage");
+    const rect = stage.getBoundingClientRect();
+    const cw = stage.clientWidth, ch = stage.clientHeight;
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const s = Math.max(cw / vw, ch / vh);
+    const vx = (e.clientX - rect.left - (cw - vw * s) / 2) / s;
+    const vy = (e.clientY - rect.top - (ch - vh * s) / 2) / s;
+    if (vx < 0 || vy < 0 || vx > vw || vy > vh) return;
+    tapPoint = { nx: vx / vw, ny: vy / vh, at: Date.now() };
+    stableCount = 0;
+  });
+
+  function freshTap(ttl = TAP_TTL) {
+    return tapPoint && Date.now() - tapPoint.at < ttl ? tapPoint : null;
+  }
 
   function quadStable(a, b) {
     if (!a || !b) return false;
@@ -212,8 +234,10 @@
       small.width = Math.round(video.videoWidth * k);
       small.height = Math.round(video.videoHeight * k);
       small.getContext("2d").drawImage(video, 0, 0, small.width, small.height);
+      const tap = freshTap();
+      const near = tap ? { x: tap.nx * small.width, y: tap.ny * small.height } : null;
       let quad = null;
-      try { quad = Detector.detectQuad(small); } catch { /* skip frame */ }
+      try { quad = Detector.detectQuad(small, near); } catch { /* skip frame */ }
 
       let progress = 0;
       if (autoOn && quad && Date.now() > autoCooldownUntil) {
@@ -240,11 +264,22 @@
     const ctx = overlay.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cw, ch);
-    if (!quad) return;
     // video is object-fit: cover — map video coords to displayed coords
     const vw = video.videoWidth, vh = video.videoHeight;
     const s = Math.max(cw / vw, ch / vh);
     const dx = (cw - vw * s) / 2, dy = (ch - vh * s) / 2;
+    // tap marker: brief pulse where the user pointed (shown with or
+    // without a detection, so the tap always gives feedback)
+    const tap = freshTap(1400);
+    if (tap) {
+      const age = (Date.now() - tap.at) / 1400;
+      ctx.beginPath();
+      ctx.arc(tap.nx * vw * s + dx, tap.ny * vh * s + dy, 14 + age * 18, 0, 2 * Math.PI);
+      ctx.strokeStyle = `rgba(255,255,255,${(1 - age) * 0.9})`;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    if (!quad) return;
     const mapped = quad.map((p) => ({ x: (p.x / k) * s + dx, y: (p.y / k) * s + dy }));
     ctx.beginPath();
     mapped.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
@@ -321,7 +356,7 @@
     return c;
   }
 
-  async function createPage(srcCanvas) {
+  async function createPage(srcCanvas, near) {
     ensureDoc();
     const page = {
       id: nextId++,
@@ -337,7 +372,7 @@
     if (cvOk !== false) {
       try {
         await Detector.ready();
-        page.corners = Detector.detectQuad(srcCanvas);
+        page.corners = Detector.detectQuad(srcCanvas, near);
       } catch { /* leave null -> near-full-frame crop */ }
     }
     pages.push(page);
@@ -353,8 +388,12 @@
     flash.classList.add("go");
     try {
       const c = await captureFrame();
+      // a recent tap steers detection on the captured still too
+      const tap = freshTap();
+      const near = tap ? { x: tap.nx * c.width, y: tap.ny * c.height } : null;
+      tapPoint = null;
       if (batchOn) {
-        const page = await createPage(c);
+        const page = await createPage(c, near);
         await reprocess(page, c);
         updateBadge();
         persist();
@@ -363,7 +402,7 @@
         stopCamera();
         showSpinner(true);
         showScreenBare("screen-edit");
-        const page = await createPage(c);
+        const page = await createPage(c, near);
         await openEdit(page, c);
         persist();
       }
