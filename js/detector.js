@@ -197,19 +197,30 @@ const Detector = (() => {
     }
 
     if (!candidates.length) return null;
-    let pool = candidates;
-    let pick = (a, b) => (b.score > a.score ? b : a); // default: best score
+    const scaled = (c) => c.quad.map((p) => ({ x: p.x / scale, y: p.y / scale }));
+
     if (nearPt) {
+      // a tap is a lock on that spot — never jump to a different item
       const containing = candidates.filter((c) => pointInQuad(nearPt, c.quad));
       if (containing.length) {
         // tightest quad around the tap — "this specific thing", not the
         // table edge that happens to contain it too
-        pool = containing;
-        pick = (a, b) => (b.area < a.area ? b : a);
+        return scaled(containing.reduce((a, b) => (b.area < a.area ? b : a)));
       }
+      // nothing contains the finger: allow the nearest quad if it is
+      // genuinely close (detection wobble), otherwise report nothing
+      let best = null, bestD = Infinity;
+      for (const c of candidates) {
+        const cx = c.quad.reduce((s, p) => s + p.x, 0) / 4;
+        const cy = c.quad.reduce((s, p) => s + p.y, 0) / 4;
+        const d = Math.hypot(cx - nearPt.x, cy - nearPt.y);
+        if (d < bestD) { bestD = d; best = c; }
+      }
+      const limit = 0.3 * Math.hypot(small.width, small.height);
+      return best && bestD < limit ? scaled(best) : null;
     }
-    const best = pool.reduce(pick);
-    return best.quad.map((p) => ({ x: p.x / scale, y: p.y / scale }));
+
+    return scaled(candidates.reduce((a, b) => (b.score > a.score ? b : a)));
   }
 
   // ---- processing ----
