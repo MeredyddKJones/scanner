@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#101418">
+<title>Scanner</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+
+<!-- ============ CAMERA SCREEN ============ -->
+<main id="screen-camera" class="screen active">
+  <div id="cam-stage">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <div id="cam-message" class="cam-message hidden"></div>
+  </div>
+  <header class="cam-top">
+    <span id="cv-status" class="pill">loading detector…</span>
+    <button id="btn-torch" class="icon-btn hidden" title="Torch">
+      <svg viewBox="0 0 24 24"><path d="M7 2h10v3l-2 3v3h-6V8L7 5V2zm2 13h6l-1 7h-4l-1-7z" fill="currentColor"/></svg>
+    </button>
+  </header>
+  <footer class="cam-controls">
+    <button id="btn-import" class="icon-btn big" title="Import from gallery">
+      <svg viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1zm1 2v10.6l4.3-4.3 3 3 4.4-4.4L20 14V6H5zm3.5 1.5A1.75 1.75 0 118.5 11a1.75 1.75 0 010-3.5z" fill="currentColor"/></svg>
+    </button>
+    <button id="btn-shutter" title="Capture"><span></span></button>
+    <button id="btn-pages" class="pages-badge" title="Pages">
+      <img id="badge-thumb" alt="">
+      <span id="badge-count">0</span>
+    </button>
+  </footer>
+  <input type="file" id="file-input" accept="image/*" multiple hidden>
+</main>
+
+<!-- ============ EDIT SCREEN ============ -->
+<main id="screen-edit" class="screen">
+  <header class="bar">
+    <button id="edit-back" class="icon-btn" title="Back">
+      <svg viewBox="0 0 24 24"><path d="M15 4l-8 8 8 8" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
+    </button>
+    <h2 id="edit-title">Page</h2>
+    <button id="edit-delete" class="icon-btn danger" title="Delete page">
+      <svg viewBox="0 0 24 24"><path d="M6 7h12M9 7V5h6v2m-8 0l1 13h8l1-13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
+    </button>
+  </header>
+  <div id="edit-stage">
+    <canvas id="edit-canvas"></canvas>
+    <div id="corner-layer" class="hidden">
+      <div class="handle" data-i="0"></div><div class="handle" data-i="1"></div>
+      <div class="handle" data-i="2"></div><div class="handle" data-i="3"></div>
+      <svg id="corner-lines"></svg>
+    </div>
+    <div id="edit-spinner" class="spinner hidden"></div>
+  </div>
+  <div id="filter-row" class="chip-row">
+    <button class="chip" data-filter="original">Original</button>
+    <button class="chip active" data-filter="enhanced">Magic</button>
+    <button class="chip" data-filter="gray">Grayscale</button>
+    <button class="chip" data-filter="bw">B&amp;W</button>
+  </div>
+  <footer class="bar edit-tools">
+    <button id="btn-corners" class="tool-btn">
+      <svg viewBox="0 0 24 24"><path d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+      <span>Crop</span>
+    </button>
+    <button id="btn-rotate" class="tool-btn">
+      <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.3-5.6M20 3v4h-4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+      <span>Rotate</span>
+    </button>
+    <button id="btn-done" class="tool-btn accent">
+      <svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
+      <span>Done</span>
+    </button>
+  </footer>
+</main>
+
+<!-- ============ PAGES SCREEN ============ -->
+<main id="screen-pages" class="screen">
+  <header class="bar">
+    <button id="pages-back" class="icon-btn" title="Camera">
+      <svg viewBox="0 0 24 24"><path d="M15 4l-8 8 8 8" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
+    </button>
+    <h2 id="pages-title">Pages</h2>
+    <button id="pages-clear" class="icon-btn danger" title="Delete all">
+      <svg viewBox="0 0 24 24"><path d="M6 7h12M9 7V5h6v2m-8 0l1 13h8l1-13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
+    </button>
+  </header>
+  <div id="page-grid"></div>
+  <div id="pages-empty" class="empty-note hidden">No pages yet — capture or import some.</div>
+  <footer class="bar pages-actions">
+    <button id="btn-add" class="ghost-btn">＋ Add page</button>
+    <button id="btn-export" class="accent-btn">Export</button>
+  </footer>
+</main>
+
+<!-- ============ EXPORT SHEET ============ -->
+<div id="sheet-backdrop" class="hidden"></div>
+<div id="sheet-export" class="sheet hidden">
+  <div class="sheet-grip"></div>
+  <label class="field">
+    <span>File name</span>
+    <input id="export-name" type="text" spellcheck="false">
+  </label>
+  <div class="field">
+    <span>Format</span>
+    <div class="chip-row" id="format-row">
+      <button class="chip active" data-format="pdf">PDF</button>
+      <button class="chip" data-format="jpg">JPG</button>
+      <button class="chip" data-format="png">PNG</button>
+      <button class="chip" data-format="txt">Text (OCR)</button>
+    </div>
+  </div>
+  <div id="export-progress" class="hidden">
+    <div class="progress-track"><div id="progress-fill"></div></div>
+    <span id="progress-label"></span>
+  </div>
+  <div class="sheet-actions">
+    <button id="btn-share" class="ghost-btn hidden">Share</button>
+    <button id="btn-save" class="accent-btn">Save</button>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="js/detector.js"></script>
+<script src="js/exporter.js"></script>
+<script src="js/app.js"></script>
+</html>
